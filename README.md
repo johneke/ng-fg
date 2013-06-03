@@ -1,7 +1,7 @@
-angular-model-form-generator
+ng-form-direct
 ============================
 
-angular js directive that automatically generates input forms
+angular js directive that automatically generates input forms for angular models
 
 Dependencies
 ============
