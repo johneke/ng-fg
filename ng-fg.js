@@ -1,11 +1,21 @@
 (function(){
 
 angular.module('fg', [])
-	.directive('fgForm', function(utils){
+	.directive('fgForm', function($compile, utils){
+
+		var linker = function(scope, element, attrs) {
+			var template =	utils.templates.form
+								.replace(/{schema}/gi, attrs.schema)
+								.replace(/{name}/gi, attrs.name);
+
+			element.html(template);
+			$compile(element.contents())(scope);
+		};
+
 		return {
 			restrict: 'E',
-			template: utils.templates.form,
-			replace: true
+			replace: true,
+			link: linker
 		};
 	})
 	.directive('fgObject', function($compile, getobject, inflect, utils){
@@ -73,6 +83,7 @@ angular.module('fg', [])
 
 		var linker = function(scope, element, attrs) {
 			var template = null;
+			var options = null;
 			
 			switch (attrs.type)
 			{
@@ -86,12 +97,33 @@ angular.module('fg', [])
 					template = utils.templates.textbox;
 					break;
 
+				case 'enum':
+					options = getobject.get(scope, attrs.schema);
+					if (options.length)
+					{
+						if (Object.prototype.toString.call(options[0]) === "[object Object]")
+						{
+							template = 	utils.templates.enumObj;
+						}
+						else
+						{
+							template = 	utils.templates.enum;
+						}
+					}
+					else
+					{
+						template = '';
+					}
+					break;
+
 				default:
 					template = '';
 					break;
 			}
 
-			template = template.replace(/{name}/gi, attrs.name);
+			template =	template
+							.replace(/{schema}/gi, attrs.schema)
+							.replace(/{name}/gi, attrs.name);
 
 			element.html(template);
 			$compile(element.contents())(scope);
@@ -107,21 +139,28 @@ angular.module('fg', [])
 		var directives = {};
 		directives.object = '<fg-object schema="{schema}" name="{name}"></fg-object>';
 		directives.arrayItem = '<fg-array-item schema="{schema}" name="{name}"></fg-array-item>';
-		directives.control = '<fg-control type="{type}" name="{name}"></fg-control>';
+		directives.control = '<fg-control schema="{schema}" name="{name}" type="{type}"></fg-control>';
 
 		var templates = {};
 		templates.object = '<fieldset><legend>{legend}</legend>{content}</fieldset>';
 		templates.form =	'<form>{content}</form>'
-								.replace(/{content}/gi, directives.object)
-								.replace(/{schema}/gi, "fgSchema")
-								.replace(/{name}/gi, "sample");
+								.replace(/{content}/gi, directives.object);
 		templates.arrayItem = '<div>{content}</div>';
 		templates.textbox = '<input type="text" placeholder="{name}" />';
 		templates.checkbox = '<input type="text" placeholder="{name}" />';
+		templates.enum = '<select><option>Select {name}...</option><option ng-repeat="opt in {schema}" value="{{opt}}">{{opt}}</option></select>';
+		templates.enumObj = '<select><option>Select {name}...</option><option ng-repeat="opt in {schema}" value="{{opt.id}}">{{opt.label}}</option></select>';
 
 		var getDirectiveForSchema = function(schema, path, name){
 			var content = '';
-			if(schema.type)
+			if (schema.enum)
+			{
+				content = 	directives.control
+								.replace(/{schema}/gi, path + '.enum')
+								.replace(/{type}/gi, 'enum')
+								.replace(/{name}/gi, name);
+			}
+			else if(schema.type)
 			{
 				switch(schema.type.toLowerCase())
 				{
