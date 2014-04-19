@@ -4,9 +4,11 @@ angular.module('fg', [])
 	.directive('fgForm', function($compile, utils){
 
 		var linker = function(scope, element, attrs) {
+			scope[attrs.name] = utils.objectFromSchema(attrs.name, scope[attrs.schema]);
 			var template =	utils.templates.form
 								.replace(/{schema}/gi, attrs.schema)
-								.replace(/{name}/gi, attrs.name);
+								.replace(/{name}/gi, attrs.name)
+								.replace(/{model}/gi, attrs.name);
 
 			element.html(template);
 			$compile(element.contents())(scope);
@@ -32,7 +34,7 @@ angular.module('fg', [])
 					for (i in schema.properties)
 					{
 						var field = schema.properties[i];
-						content += utils.getDirectiveForSchema(field, attrs.schema + '.properties.' + i, i);
+						content += utils.getDirectiveForSchema(field, attrs.schema + '.properties.' + i, i, attrs.model + '.' + i);
 					}
 					template =	utils.templates.object
 									.replace(/{content}/gi, content)
@@ -44,7 +46,8 @@ angular.module('fg', [])
 									.replace(/{content}/gi, utils.directives.arrayItem)
 									.replace(/{legend}/gi, attrs.name)
 									.replace(/{schema}/gi, attrs.schema + '.items')
-									.replace(/{name}/gi, inflect.singularize(attrs.name));
+									.replace(/{name}/gi, inflect.singularize(attrs.name))
+									.replace(/{model}/gi, attrs.model);
 					break;
 
 				default:
@@ -62,12 +65,15 @@ angular.module('fg', [])
 			link: linker
 		};
 	})
-	.directive('fgArrayItem', function($compile, getobject, utils){
+	.directive('fgArrayItem', function($compile, getobject, utils, inflect){
 
 		var linker = function(scope, element, attrs) {
 			var schema = getobject.get(scope, attrs.schema);
-			var content = utils.getDirectiveForSchema(schema, attrs.schema, attrs.name);
-			var template = utils.templates.arrayItem.replace(/{content}/gi, content);
+			var content = utils.getDirectiveForSchema(schema, attrs.schema, attrs.name, inflect.singularize(attrs.name));
+			var template =	utils.templates.arrayItem
+								.replace(/{content}/gi, content)
+								.replace(/{item}/gi, inflect.singularize(attrs.name))
+								.replace(/{model}/gi, attrs.model);
 
 			element.html(template);
 			$compile(element.contents())(scope);
@@ -123,7 +129,8 @@ angular.module('fg', [])
 
 			template =	template
 							.replace(/{schema}/gi, attrs.schema)
-							.replace(/{name}/gi, attrs.name);
+							.replace(/{name}/gi, attrs.name)
+							.replace(/{model}/gi, attrs.model);
 
 			element.html(template);
 			$compile(element.contents())(scope);
@@ -137,28 +144,29 @@ angular.module('fg', [])
 	})
 	.service('utils', function(){
 		var directives = {};
-		directives.object = '<fg-object schema="{schema}" name="{name}"></fg-object>';
-		directives.arrayItem = '<fg-array-item schema="{schema}" name="{name}"></fg-array-item>';
-		directives.control = '<fg-control schema="{schema}" name="{name}" type="{type}"></fg-control>';
+		directives.object = 	'<fg-object schema="{schema}" name="{name}" model="{model}"></fg-object>';
+		directives.arrayItem = 	'<fg-array-item schema="{schema}" name="{name}" model="{model}"></fg-array-item>';
+		directives.control = 	'<fg-control schema="{schema}" name="{name}" type="{type}" model="{model}"></fg-control>';
 
 		var templates = {};
-		templates.object = '<fieldset><legend>{legend}</legend>{content}</fieldset>';
-		templates.form =	'<form>{content}</form>'
-								.replace(/{content}/gi, directives.object);
-		templates.arrayItem = '<div>{content}</div>';
-		templates.textbox = '<input type="text" placeholder="{name}" />';
-		templates.checkbox = '<input type="text" placeholder="{name}" />';
-		templates.enum = '<select><option>Select {name}...</option><option ng-repeat="opt in {schema}" value="{{opt}}">{{opt}}</option></select>';
-		templates.enumObj = '<select><option>Select {name}...</option><option ng-repeat="opt in {schema}" value="{{opt.id}}">{{opt.label}}</option></select>';
+		templates.object = 		'<fieldset><legend>{legend}</legend>{content}</fieldset>';
+		templates.form =		'<form>{content}</form>'
+									.replace(/{content}/gi, directives.object);
+		templates.arrayItem = 	'<div ng-repeat="{item} in {model}">{content}</div>';
+		templates.textbox = 	'<input type="text" placeholder="{name}" ng-model="{model}" />';
+		templates.checkbox = 	'<input type="text" placeholder="{name}" ng-model="{model}" />';
+		templates.enum = 		'<select ng-model="{model}" ng-options="opt for opt in {schema} track by opt"><option value="">Select {name}...</option></select>';
+		templates.enumObj = 	'<select ng-model="{model}"><option value="">Select {name}...</option><option ng-repeat="opt in {schema}" value="{{opt.id}}">{{opt.label}}</option></select>';
 
-		var getDirectiveForSchema = function(schema, path, name){
+		var getDirectiveForSchema = function(schema, path, name, model){
 			var content = '';
 			if (schema.enum)
 			{
 				content = 	directives.control
 								.replace(/{schema}/gi, path + '.enum')
 								.replace(/{type}/gi, 'enum')
-								.replace(/{name}/gi, name);
+								.replace(/{name}/gi, name)
+								.replace(/{model}/gi, model);
 			}
 			else if(schema.type)
 			{
@@ -168,7 +176,8 @@ angular.module('fg', [])
 					case 'array':
 						content =	directives.object
 										.replace(/{schema}/gi, path)
-										.replace(/{name}/gi, name);
+										.replace(/{name}/gi, name)
+										.replace(/{model}/gi, model);
 						break;
 
 					case 'boolean':
@@ -177,7 +186,8 @@ angular.module('fg', [])
 					case 'string':
 						content = 	directives.control
 										.replace(/{type}/gi, schema.type.toLowerCase())
-										.replace(/{name}/gi, name);
+										.replace(/{name}/gi, name)
+										.replace(/{model}/gi, model);
 						break;
 
 					default:
@@ -195,10 +205,68 @@ angular.module('fg', [])
 			return content;
 		};
 
+		var objectFromSchema = function(name, schema) {
+			var type = schema.type;
+			var _enum = schema.enum;
+			var obj = (type === 'array') ? [] : {};
+			var i = null;
+
+			function addSubObj(key, subObj)
+			{
+				if (type === 'array')
+				{
+					obj.push(subObj);
+				}
+				else
+				{
+					obj[key] = subObj;
+				}
+			}
+
+			if (_enum)
+			{
+				obj = '';
+			}
+			else if (type)
+			{
+				switch(type.toLowerCase())
+				{
+					case 'boolean':
+					case 'integer':
+					case 'number':
+					case 'string':
+						obj = '';
+						break;
+
+					case 'object':
+						for (i in schema.properties)
+						{
+							var field = schema.properties[i];
+							addSubObj(i, objectFromSchema(i, field));
+						}
+						break;
+
+					case 'array':
+						addSubObj(null, objectFromSchema(null, schema.items));
+						break;
+
+					default:
+						break;
+				}
+			}
+			else
+			{
+				return null;
+			}
+
+			return obj;
+		};
+
 		return {
 			templates: templates,
 			directives: directives,
-			getDirectiveForSchema: getDirectiveForSchema
+			getDirectiveForSchema: getDirectiveForSchema,
+			objectFromSchema: objectFromSchema
 		};
 	})
 	.service('inflect', function(){
