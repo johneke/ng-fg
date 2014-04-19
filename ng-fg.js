@@ -8,6 +8,7 @@ angular.module('fg', [])
 			var template =	utils.templates.form
 								.replace(/{schema}/gi, attrs.schema)
 								.replace(/{name}/gi, attrs.name)
+								.replace(/{array-item}/gi, false)
 								.replace(/{model}/gi, attrs.name);
 
 			element.html(template);
@@ -34,15 +35,23 @@ angular.module('fg', [])
 					for (i in schema.properties)
 					{
 						var field = schema.properties[i];
-						content += utils.getDirectiveForSchema(field, attrs.schema + '.properties.' + i, i, attrs.model + '.' + i);
+						content += utils.getDirectiveForSchema(field, attrs.schema + '.properties.' + i, i, attrs.model + '.' + i, false);
 					}
-					template =	utils.templates.object
+					if (attrs.arrayItem === "true")
+					{
+						template =	utils.templates.objectArrayItem;
+					}
+					else
+					{
+						template =	utils.templates.object;
+					}
+					template =	template
 									.replace(/{content}/gi, content)
 									.replace(/{legend}/gi, attrs.name);
 					break;
 
 				case 'array':
-					template =	utils.templates.object
+					template =	utils.templates.array
 									.replace(/{content}/gi, utils.directives.arrayItem)
 									.replace(/{legend}/gi, attrs.name)
 									.replace(/{schema}/gi, attrs.schema + '.items')
@@ -69,7 +78,7 @@ angular.module('fg', [])
 
 		var linker = function(scope, element, attrs) {
 			var schema = getobject.get(scope, attrs.schema);
-			var content = utils.getDirectiveForSchema(schema, attrs.schema, attrs.name, inflect.singularize(attrs.name));
+			var content = utils.getDirectiveForSchema(schema, attrs.schema, attrs.name, inflect.singularize(attrs.name), true);
 			var template =	utils.templates.arrayItem
 								.replace(/{content}/gi, content)
 								.replace(/{item}/gi, inflect.singularize(attrs.name))
@@ -90,17 +99,27 @@ angular.module('fg', [])
 		var linker = function(scope, element, attrs) {
 			var template = null;
 			var options = null;
+
+			function getTemplate(template)
+			{
+				if (attrs.arrayItem === "true")
+				{
+					return template + 'ArrayItem';
+				}
+
+				return template;
+			}
 			
 			switch (attrs.type)
 			{
 				case 'boolean':
-					template = utils.templates.checkbox;
+					template = utils.templates[getTemplate('checkbox')];
 					break;
 
 				case 'integer':
 				case 'number':
 				case 'string':
-					template = utils.templates.textbox;
+					template = utils.templates[getTemplate('textbox')];
 					break;
 
 				case 'enum':
@@ -109,11 +128,11 @@ angular.module('fg', [])
 					{
 						if (Object.prototype.toString.call(options[0]) === "[object Object]")
 						{
-							template = 	utils.templates.enumObj;
+							template = 	utils.templates[getTemplate('enumObj')];
 						}
 						else
 						{
-							template = 	utils.templates.enum;
+							template = 	utils.templates[getTemplate('enum')];
 						}
 					}
 					else
@@ -144,21 +163,28 @@ angular.module('fg', [])
 	})
 	.service('utils', function(){
 		var directives = {};
-		directives.object = 	'<fg-object schema="{schema}" name="{name}" model="{model}"></fg-object>';
+		directives.object = 	'<fg-object schema="{schema}" name="{name}" array-item="{array-item}" model="{model}"></fg-object>';
 		directives.arrayItem = 	'<fg-array-item schema="{schema}" name="{name}" model="{model}"></fg-array-item>';
-		directives.control = 	'<fg-control schema="{schema}" name="{name}" type="{type}" model="{model}"></fg-control>';
+		directives.control = 	'<fg-control schema="{schema}" name="{name}" array-item="{array-item}" type="{type}" model="{model}"></fg-control>';
 
 		var templates = {};
 		templates.object = 		'<fieldset><legend>{legend}</legend>{content}</fieldset>';
+		templates.array = 		'<fieldset><legend>{legend}<input type="button" value="Add" ng-click="" /></legend>{content}</fieldset>';
 		templates.form =		'<form>{content}</form>'
 									.replace(/{content}/gi, directives.object);
-		templates.arrayItem = 	'<div ng-repeat="{item} in {model}">{content}</div>';
 		templates.textbox = 	'<input type="text" placeholder="{name}" ng-model="{model}" />';
 		templates.checkbox = 	'<input type="text" placeholder="{name}" ng-model="{model}" />';
 		templates.enum = 		'<select ng-model="{model}" ng-options="opt for opt in {schema} track by opt"><option value="">Select {name}...</option></select>';
 		templates.enumObj = 	'<select ng-model="{model}"><option value="">Select {name}...</option><option ng-repeat="opt in {schema}" value="{{opt.id}}">{{opt.label}}</option></select>';
 
-		var getDirectiveForSchema = function(schema, path, name, model){
+		templates.arrayItem = 			'<div ng-repeat="{item} in {model}">{content}</div>';
+		templates.objectArrayItem = 	'<fieldset><legend>{legend}<input type="button" value="Delete" /></legend>{content}</fieldset>';
+		templates.textboxArrayItem = 	'<input type="text" placeholder="{name}" ng-model="{model}" /><input type="button" value="Delete" />';
+		templates.checkboxArrayItem = 	'<input type="text" placeholder="{name}" ng-model="{model}" /><input type="button" value="Delete" />';
+		templates.enumArrayItem = 		'<select ng-model="{model}" ng-options="opt for opt in {schema} track by opt"><option value="">Select {name}...</option></select><input type="button" value="Delete" />';
+		templates.enumObjArrayItem = 	'<select ng-model="{model}"><option value="">Select {name}...</option><option ng-repeat="opt in {schema}" value="{{opt.id}}">{{opt.label}}</option></select><input type="button" value="Delete" />';
+
+		var getDirectiveForSchema = function(schema, path, name, model, isArrayItem){
 			var content = '';
 			if (schema.enum)
 			{
@@ -166,6 +192,7 @@ angular.module('fg', [])
 								.replace(/{schema}/gi, path + '.enum')
 								.replace(/{type}/gi, 'enum')
 								.replace(/{name}/gi, name)
+								.replace(/{array-item}/gi, isArrayItem.toString())
 								.replace(/{model}/gi, model);
 			}
 			else if(schema.type)
@@ -177,6 +204,7 @@ angular.module('fg', [])
 						content =	directives.object
 										.replace(/{schema}/gi, path)
 										.replace(/{name}/gi, name)
+										.replace(/{array-item}/gi, isArrayItem.toString())
 										.replace(/{model}/gi, model);
 						break;
 
@@ -187,6 +215,7 @@ angular.module('fg', [])
 						content = 	directives.control
 										.replace(/{type}/gi, schema.type.toLowerCase())
 										.replace(/{name}/gi, name)
+										.replace(/{array-item}/gi, isArrayItem.toString())
 										.replace(/{model}/gi, model);
 						break;
 
